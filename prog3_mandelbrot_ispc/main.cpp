@@ -132,14 +132,16 @@ int main(int argc, char** argv) {
     // runs for robust timing.
     //
     double minSerial = 1e30;
+    double maxSerial = 0.0;
     for (int i = 0; i < 3; ++i) {
         double startTime = CycleTimer::currentSeconds();
         mandelbrotSerial(x0, y0, x1, y1, width, height, 0, height, maxIterations, output_serial);
         double endTime = CycleTimer::currentSeconds();
         minSerial = std::min(minSerial, endTime - startTime);
+        maxSerial = std::max(maxSerial, endTime - startTime);
     }
 
-    printf("[mandelbrot serial]:\t\t[%.3f] ms\n", minSerial * 1000);
+    printf("[mandelbrot serial]:\t\t[%.3f] ms (min %.3f, max %.3f)\n", minSerial * 1000, minSerial * 1000, maxSerial * 1000);
     writePPMImage(output_serial, width, height, "mandelbrot-serial.ppm", maxIterations);
 
     // Clear out the buffer
@@ -150,14 +152,16 @@ int main(int argc, char** argv) {
     // Compute the image using the ispc implementation
     //
     double minISPC = 1e30;
+    double maxISPC = 0.0;
     for (int i = 0; i < 3; ++i) {
         double startTime = CycleTimer::currentSeconds();
         mandelbrot_ispc(x0, y0, x1, y1, width, height, maxIterations, output_ispc);
         double endTime = CycleTimer::currentSeconds();
         minISPC = std::min(minISPC, endTime - startTime);
+        maxISPC = std::max(maxISPC, endTime - startTime);
     }
 
-    printf("[mandelbrot ispc]:\t\t[%.3f] ms\n", minISPC * 1000);
+    printf("[mandelbrot ispc]:\t\t[%.3f] ms (min %.3f, max %.3f)\n", minISPC * 1000, minISPC * 1000, maxISPC * 1000);
     writePPMImage(output_ispc, width, height, "mandelbrot-ispc.ppm", maxIterations);
 
 
@@ -177,6 +181,7 @@ int main(int argc, char** argv) {
     }
 
     double minTaskISPC = 1e30;
+    double maxTaskISPC = 0.0;
     if (useTasks) {
         //
         // Tasking version of the ISPC code
@@ -186,9 +191,10 @@ int main(int argc, char** argv) {
             mandelbrot_ispc_withtasks(x0, y0, x1, y1, width, height, maxIterations, output_ispc_tasks);
             double endTime = CycleTimer::currentSeconds();
             minTaskISPC = std::min(minTaskISPC, endTime - startTime);
+            maxTaskISPC = std::max(maxTaskISPC, endTime - startTime);
         }
 
-        printf("[mandelbrot multicore ispc]:\t[%.3f] ms\n", minTaskISPC * 1000);
+        printf("[mandelbrot multicore ispc]:\t[%.3f] ms (min %.3f, max %.3f)\n", minTaskISPC * 1000, minTaskISPC * 1000, maxTaskISPC * 1000);
         writePPMImage(output_ispc_tasks, width, height, "mandelbrot-task-ispc.ppm", maxIterations);
 
         if (! verifyResult (output_serial, output_ispc_tasks, width, height)) {
