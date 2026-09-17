@@ -1,6 +1,8 @@
 #include <cstdlib>
 #include <stdio.h>
 #include <thread>
+#include <chrono>
+#include <algorithm>
 
 #include "CycleTimer.h"
 
@@ -29,14 +31,34 @@ extern void mandelbrotSerial(
 //
 // Thread entrypoint.
 void workerThreadStart(WorkerArgs * const args) {
+    const bool cyclic = std::getenv("MANDELBROT_CYCLIC") != nullptr;
+    const auto start = std::chrono::steady_clock::now();
 
-    // TODO FOR CS149 STUDENTS: Implement the body of the worker
-    // thread here. Each thread should make a call to mandelbrotSerial()
-    // to compute a part of the output image.  For example, in a
-    // program that uses two threads, thread 0 could compute the top
-    // half of the image and thread 1 could compute the bottom half.
+    if (!cyclic) {
+        const int rowsPerThread = (args->height + args->numThreads - 1) /
+                                  args->numThreads;
+        const int startRow = args->threadId * rowsPerThread;
+        const int endRow = std::min(static_cast<int>(args->height),
+                                    startRow + rowsPerThread);
+        if (startRow < endRow) {
+            mandelbrotSerial(args->x0, args->y0, args->x1, args->y1,
+                             args->width, args->height, startRow,
+                             endRow - startRow, args->maxIterations,
+                             args->output);
+        }
+    } else {
+        for (int row = args->threadId; row < static_cast<int>(args->height);
+             row += args->numThreads) {
+            mandelbrotSerial(args->x0, args->y0, args->x1, args->y1,
+                             args->width, args->height, row, 1,
+                             args->maxIterations, args->output);
+        }
+    }
 
-    printf("Hello world from thread %d\n", args->threadId);
+    const auto end = std::chrono::steady_clock::now();
+    const double elapsed = std::chrono::duration<double, std::milli>(end - start).count();
+    printf("[thread %d]: %.3f ms (%s)\n", args->threadId, elapsed,
+           cyclic ? "cyclic" : "blocked");
 }
 
 //
