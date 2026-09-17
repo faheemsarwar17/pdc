@@ -65,21 +65,21 @@ double dist(double *x, double *y, int nDim) {
  * Assigns each data point to its "closest" cluster centroid.
  */
 void computeAssignments(WorkerArgs *const args) {
-  double *minDist = new double[args->M];
+  double *minDist = new double[args->end - args->start];
   
   // Initialize arrays
-  for (int m =0; m < args->M; m++) {
-    minDist[m] = 1e30;
+  for (int m = args->start; m < args->end; m++) {
+    minDist[m - args->start] = 1e30;
     args->clusterAssignments[m] = -1;
   }
 
   // Assign datapoints to closest centroids
-  for (int k = args->start; k < args->end; k++) {
-    for (int m = 0; m < args->M; m++) {
+  for (int m = args->start; m < args->end; m++) {
+    for (int k = 0; k < args->K; k++) {
       double d = dist(&args->data[m * args->N],
                       &args->clusterCentroids[k * args->N], args->N);
-      if (d < minDist[m]) {
-        minDist[m] = d;
+      if (d < minDist[m - args->start]) {
+        minDist[m - args->start] = d;
         args->clusterAssignments[m] = k;
       }
     }
@@ -189,6 +189,13 @@ void kMeansThread(double *data, double *clusterCentroids, int *clusterAssignment
   args.N = N;
   args.K = K;
 
+  const char *threadSetting = std::getenv("KMEANS_THREADS");
+  const int numThreads = threadSetting ? max(1, min(4, atoi(threadSetting))) : 4;
+  std::thread workers[4];
+  WorkerArgs workerArgs[4];
+  double assignmentTime = 0.0;
+  double remainderTime = 0.0;
+
   // Initialize arrays to track cost
   for (int k = 0; k < K; k++) {
     prevCost[k] = 1e30;
@@ -203,16 +210,32 @@ void kMeansThread(double *data, double *clusterCentroids, int *clusterAssignment
       prevCost[k] = currCost[k];
     }
 
-    // Setup args struct
+    const double assignmentStart = CycleTimer::currentSeconds();
+    const int pointsPerThread = (M + numThreads - 1) / numThreads;
+    for (int t = 0; t < numThreads; t++) {
+      workerArgs[t] = args;
+      workerArgs[t].start = min(M, t * pointsPerThread);
+      workerArgs[t].end = min(M, workerArgs[t].start + pointsPerThread);
+      workers[t] = std::thread(computeAssignments, &workerArgs[t]);
+    }
+    for (int t = 0; t < numThreads; t++) {
+      workers[t].join();
+    }
+    assignmentTime += CycleTimer::currentSeconds() - assignmentStart;
+
     args.start = 0;
     args.end = K;
-
-    computeAssignments(&args);
+    const double remainderStart = CycleTimer::currentSeconds();
     computeCentroids(&args);
     computeCost(&args);
+    remainderTime += CycleTimer::currentSeconds() - remainderStart;
 
     iter++;
   }
+
+    printf("[assignment time]: %.3f ms (%.1f%% of measured compute time, %d threads)\n",
+      assignmentTime * 1000,
+      100.0 * assignmentTime / (assignmentTime + remainderTime), numThreads);
 
   delete[] currCost;
   delete[] prevCost;
