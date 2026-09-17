@@ -2,6 +2,8 @@
 #include <algorithm>
 #include <pthread.h>
 #include <math.h>
+#include <cstdlib>
+#include <string>
 
 #include "CycleTimer.h"
 #include "sqrt_ispc.h"
@@ -9,6 +11,19 @@
 using namespace ispc;
 
 extern void sqrtSerial(int N, float startGuess, float* values, float* output);
+
+static int iterationCount(float value, float initialGuess) {
+    const float threshold = 0.00001f;
+    float guess = initialGuess;
+    float error = fabs(guess * guess * value - 1.f);
+    int iterations = 0;
+    while (error > threshold) {
+        guess = (3.f * guess - value * guess * guess * guess) * 0.5f;
+        error = fabs(guess * guess * value - 1.f);
+        iterations++;
+    }
+    return iterations;
+}
 
 static void verifyResult(int N, float* result, float* gold) {
     for (int i=0; i<N; i++) {
@@ -27,15 +42,17 @@ int main() {
     float* output = new float[N];
     float* gold = new float[N];
 
-    for (unsigned int i=0; i<N; i++)
-    {
-        // TODO: CS149 students.  Attempt to change the values in the
-        // array here to meet the instructions in the handout: we want
-        // to you generate best and worse-case speedups
-        
-        // starter code populates array with random input values
-        values[i] = .001f + 2.998f * static_cast<float>(rand()) / RAND_MAX;
+    const bool worstCase = std::getenv("SQRT_CASE") != nullptr &&
+                           std::string(std::getenv("SQRT_CASE")) == "worst";
+    for (unsigned int i = 0; i < N; i++) {
+        values[i] = worstCase && (i % 8 == 0) ? 0.000001f : 1.0f;
     }
+
+    printf("[sqrt %s lane iterations]:", worstCase ? "worst" : "best");
+    for (int lane = 0; lane < 8; lane++) {
+        printf(" %d", iterationCount(values[lane], initialGuess));
+    }
+    printf("\n");
 
     // generate a gold version to check results
     for (unsigned int i=0; i<N; i++)
@@ -46,14 +63,16 @@ int main() {
     // minimum time.
     //
     double minSerial = 1e30;
+    double maxSerial = 0.0;
     for (int i = 0; i < 3; ++i) {
         double startTime = CycleTimer::currentSeconds();
         sqrtSerial(N, initialGuess, values, output);
         double endTime = CycleTimer::currentSeconds();
         minSerial = std::min(minSerial, endTime - startTime);
+        maxSerial = std::max(maxSerial, endTime - startTime);
     }
 
-    printf("[sqrt serial]:\t\t[%.3f] ms\n", minSerial * 1000);
+    printf("[sqrt serial]:\t\t[%.3f] ms (min %.3f, max %.3f)\n", minSerial * 1000, minSerial * 1000, maxSerial * 1000);
 
     verifyResult(N, output, gold);
 
@@ -62,14 +81,16 @@ int main() {
     // time of three runs.
     //
     double minISPC = 1e30;
+    double maxISPC = 0.0;
     for (int i = 0; i < 3; ++i) {
         double startTime = CycleTimer::currentSeconds();
         sqrt_ispc(N, initialGuess, values, output);
         double endTime = CycleTimer::currentSeconds();
         minISPC = std::min(minISPC, endTime - startTime);
+        maxISPC = std::max(maxISPC, endTime - startTime);
     }
 
-    printf("[sqrt ispc]:\t\t[%.3f] ms\n", minISPC * 1000);
+    printf("[sqrt ispc]:\t\t[%.3f] ms (min %.3f, max %.3f)\n", minISPC * 1000, minISPC * 1000, maxISPC * 1000);
 
     verifyResult(N, output, gold);
 
@@ -81,14 +102,16 @@ int main() {
     // Tasking version of the ISPC code
     //
     double minTaskISPC = 1e30;
+    double maxTaskISPC = 0.0;
     for (int i = 0; i < 3; ++i) {
         double startTime = CycleTimer::currentSeconds();
         sqrt_ispc_withtasks(N, initialGuess, values, output);
         double endTime = CycleTimer::currentSeconds();
         minTaskISPC = std::min(minTaskISPC, endTime - startTime);
+        maxTaskISPC = std::max(maxTaskISPC, endTime - startTime);
     }
 
-    printf("[sqrt task ispc]:\t[%.3f] ms\n", minTaskISPC * 1000);
+    printf("[sqrt task ispc]:\t[%.3f] ms (min %.3f, max %.3f)\n", minTaskISPC * 1000, minTaskISPC * 1000, maxTaskISPC * 1000);
 
     verifyResult(N, output, gold);
 
