@@ -10,7 +10,7 @@ extern void saxpySerial(int N, float a, float* X, float* Y, float* result);
 // return GB/s
 static float
 toBW(int bytes, float sec) {
-    return static_cast<float>(bytes) / (1024. * 1024. * 1024.) / sec;
+    return static_cast<float>(bytes) / 1e9f / sec;
 }
 
 static float
@@ -74,17 +74,21 @@ int main() {
     // Run the ISPC (single core) implementation
     //
     double minISPC = 1e30;
+    double maxISPC = 0.0;
     for (int i = 0; i < 3; ++i) {
         double startTime = CycleTimer::currentSeconds();
         saxpy_ispc(N, scale, arrayX, arrayY, resultISPC);
         double endTime = CycleTimer::currentSeconds();
         minISPC = std::min(minISPC, endTime - startTime);
+        maxISPC = std::max(maxISPC, endTime - startTime);
     }
 
     verifyResult(N, resultISPC, resultSerial);
 
-    printf("[saxpy ispc]:\t\t[%.3f] ms\t[%.3f] GB/s\t[%.3f] GFLOPS\n",
+        printf("[saxpy ispc]:\t\t[%.3f] ms (min %.3f, max %.3f)\t[%.3f] GB/s\t[%.3f] GFLOPS\n",
            minISPC * 1000,
+            minISPC * 1000,
+            maxISPC * 1000,
            toBW(TOTAL_BYTES, minISPC),
            toGFLOPS(TOTAL_FLOPS, minISPC));
 
@@ -92,17 +96,21 @@ int main() {
     // Run the ISPC (multi-core) implementation
     //
     double minTaskISPC = 1e30;
+    double maxTaskISPC = 0.0;
     for (int i = 0; i < 3; ++i) {
         double startTime = CycleTimer::currentSeconds();
         saxpy_ispc_withtasks(N, scale, arrayX, arrayY, resultTasks);
         double endTime = CycleTimer::currentSeconds();
         minTaskISPC = std::min(minTaskISPC, endTime - startTime);
+        maxTaskISPC = std::max(maxTaskISPC, endTime - startTime);
     }
 
     verifyResult(N, resultTasks, resultSerial);
 
-    printf("[saxpy task ispc]:\t[%.3f] ms\t[%.3f] GB/s\t[%.3f] GFLOPS\n",
+        printf("[saxpy task ispc]:\t[%.3f] ms (min %.3f, max %.3f)\t[%.3f] GB/s\t[%.3f] GFLOPS\n",
            minTaskISPC * 1000,
+            minTaskISPC * 1000,
+            maxTaskISPC * 1000,
            toBW(TOTAL_BYTES, minTaskISPC),
            toGFLOPS(TOTAL_FLOPS, minTaskISPC));
 
