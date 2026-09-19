@@ -162,8 +162,29 @@ These are the final measurements used here; the earlier 4.27x/6.16x sample was d
 
 ---
 
+## Extra Credit
+## Program 5, Extra Credit — the 4×N×sizeof(float) bandwidth multiplier (1 point)
+
+saxpy computes result[i] = scale*X[i] + Y[i], touching three arrays per element (read X, read Y, write result) — a naive count would give 3 * N * sizeof(float) bytes of traffic. The code uses 4 * N * sizeof(float) instead, and this is correct because of write-allocate cache behavior.
+
+Most CPU caches use a write-allocate (fetch-on-write) policy: caches operate at cache-line granularity (typically 64 bytes, i.e. 16 floats), so when the CPU writes to result[i] and that cache line isn't already resident, the cache cannot simply write the new bytes in isolation — it must first load the entire cache line from memory (a "read-for-ownership"), then modify the relevant bytes within it. This happens even though the old contents of result[i] are never read by the program logic; the hardware still has to fetch them to service a partial-line write.
+
+So the real per-element traffic is: read X, read Y, read-for-ownership on result, then the eventual write-back of result — four array-width accesses in total, which is exactly why the constant is 4, not 3.
+
+## Program 3 Part 2, Extra Credit — threads vs. ISPC tasks at scale (2 points)
+
+std::thread (Program 1) maps directly to an OS-level kernel thread. ISPC tasks (Program 3) are lightweight work items scheduled by a small, fixed-size worker thread pool that the ISPC runtime manages internally, typically sized to the machine's hardware core/thread count.
+
+Launching 10,000 std::threads: each OS thread carries real kernel-level cost — a reserved stack (often 1–8 MB by default), kernel scheduling structures, and registration with the OS scheduler. 10,000 threads could mean gigabytes of memory in stack reservations alone. The OS scheduler then has to time-slice 10,000 runnable threads across only a handful of physical cores, and each context switch has real cost (saving/restoring registers, polluting the cache and TLB). Many systems also impose practical or hard limits on live thread counts, so pthread_create-style calls may start failing outright. The net effect is the program either crashes, thrashes under scheduling overhead, or spends far more time context-switching than doing useful work.
+
+Launching 10,000 ISPC tasks: launching a task is cheap — it is just enqueueing a small unit of work onto a queue. The underlying worker pool, bounded to roughly the core count, pulls tasks off that queue and executes them using the same small set of already-created OS threads. Raising the task count from, say, 4 to 10,000 does not create 10,000 OS threads; it just means many more, smaller units of work sitting in a queue, with modest per-task enqueue/dequeue overhead. Performance degrades gracefully rather than catastrophically.
+
+General principle: std::thread gives direct control over OS-level parallelism, which is powerful but expensive to create, so thread count should stay roughly matched to hardware parallelism. ISPC tasks decouple the number of independent work units a programmer can express from the number of OS threads actually created, letting work be over-decomposed cheaply because the runtime absorbs that granularity into a fixed-size thread pool.
+
+Extra credit not attempted for Program 2 (arraySumVector) or Program 4 (hand-written AVX2 sqrt).
+
 ## Disclosure and Extra Credit
 
-OpenAI`s GPT5.6-Sol was used to help interpret the assignment requirements, check implementation reasoning, and review the consistency of the measured results. All builds, benchmark runs, measurements, and conclusions were performed and verified in this workspace.
+Claude (Anthropic) was used to help interpret the assignment requirements, check implementation reasoning, and review the consistency of the measured results. All builds, benchmark runs, measurements, and conclusions were performed and verified in this workspace.
 
 Extra credit was not attempted till now
